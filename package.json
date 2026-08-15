@@ -1,0 +1,45 @@
+{
+  "name": "proofrepo",
+  "version": "0.1.0",
+  "description": "Evidence-first CLI for checking whether a software repository is ready to show recruiters, clients, or collaborators.",
+  "type": "module",
+  "bin": {
+    "proofrepo": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check": "npm run lint && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "portfolio",
+    "repository-audit",
+    "developer-tools",
+    "cli",
+    "evidence"
+  ],
+  "author": "Yigit Erturk",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moriana55/proofrepo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moriana55/proofrepo/issues"
+  },
+  "homepage": "https://github.com/moriana55/proofrepo#readme",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

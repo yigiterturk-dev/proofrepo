@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">ProofRepo evidence flow</title>
+  <desc id="desc">Repository signals flow through bounded checks into Markdown or JSON reports.</desc>
+  <rect width="1200" height="420" rx="28" fill="#0b1020"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="60" y="72" fill="#9fb0d0" font-size="18" letter-spacing="3">PROOFREPO / EVIDENCE FLOW</text>
+    <g transform="translate(60 120)">
+      <rect width="290" height="220" rx="18" fill="#111a30" stroke="#334365"/>
+      <text x="28" y="44" fill="#7ee0b8" font-size="22">Repository signals</text>
+      <text x="28" y="86" fill="#d7e2f4" font-size="17">README · tests · CI</text>
+      <text x="28" y="119" fill="#d7e2f4" font-size="17">license · lockfile</text>
+      <text x="28" y="152" fill="#d7e2f4" font-size="17">env filenames only</text>
+      <text x="28" y="190" fill="#8292b2" font-size="14">No target code execution</text>
+    </g>
+    <path d="M380 230H470" stroke="#7ee0b8" stroke-width="3"/>
+    <path d="M455 218L470 230L455 242" fill="none" stroke="#7ee0b8" stroke-width="3"/>
+    <g transform="translate(480 120)">
+      <rect width="240" height="220" rx="18" fill="#111a30" stroke="#334365"/>
+      <text x="28" y="44" fill="#7ee0b8" font-size="22">Bounded checks</text>
+      <text x="28" y="91" fill="#d7e2f4" font-size="17">PASS  evidence found</text>
+      <text x="28" y="126" fill="#ffd166" font-size="17">WARN  gap detected</text>
+      <text x="28" y="161" fill="#ff7a90" font-size="17">FAIL  blocker found</text>
+      <text x="28" y="196" fill="#8292b2" font-size="14">Explicit claim boundary</text>
+    </g>
+    <path d="M750 230H840" stroke="#7ee0b8" stroke-width="3"/>
+    <path d="M825 218L840 230L825 242" fill="none" stroke="#7ee0b8" stroke-width="3"/>
+    <g transform="translate(850 120)">
+      <rect width="290" height="220" rx="18" fill="#111a30" stroke="#334365"/>
+      <text x="28" y="44" fill="#7ee0b8" font-size="22">Useful output</text>
+      <text x="28" y="90" fill="#d7e2f4" font-size="17">Markdown for people</text>
+      <text x="28" y="125" fill="#d7e2f4" font-size="17">JSON for automation</text>
+      <text x="28" y="160" fill="#d7e2f4" font-size="17">CI exit policy</text>
+      <text x="28" y="196" fill="#8292b2" font-size="14">Evidence, not certification</text>
+    </g>
+  </g>
+</svg>
