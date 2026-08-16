@@ -108,58 +108,185 @@ function getScripts(facts: RepositoryFacts): Record<string, string> {
 }
 
 function hasTestFiles(files: string[]): boolean {
-  return files.some((file) => /(^|\/)(test|tests|__tests__)(\/|$)|\.(test|spec)\.[^.]+$/i.test(file));
+  return files.some((file) =>
+    /(^|\/)(test|tests|__tests__)(\/|$)|\.(test|spec)\.[^.]+$|(^|\/)(?:test_[^/]+|[^/]+_test)\.py$/i.test(file)
+  );
 }
 
-function readFileIfExists(root: string, file: string): string {
+function readRootFile(facts: RepositoryFacts, file: string): string {
+  if (!facts.files.includes(file)) return "";
   try {
-    return readFileSync(join(root, file), "utf8");
+    const absolute = join(facts.root, file);
+    if (statSync(absolute).size > 1_000_000) return "";
+    return readFileSync(absolute, "utf8");
   } catch {
     return "";
   }
 }
 
-// Detect a runnable test command from Python-ecosystem sources, in addition to
-// package.json#scripts. Returns a short human-readable label or undefined.
+function hasIniSection(content: string, sections: string[]): boolean {
+  return content.split(/\r?\n/).some((line) => {
+    const match = line.match(/^\s*\[([^\]]+)]\s*(?:[#;].*)?$/);
+    return Boolean(match?.[1] && sections.some((section) => match[1]?.toLowerCase() === section.toLowerCase()));
+  });
+}
+
+function hasIniSectionPrefix(content: string, prefixes: string[]): boolean {
+  return content.split(/\r?\n/).some((line) => {
+    const match = line.match(/^\s*\[([^\]]+)]\s*(?:[#;].*)?$/);
+    const section = match?.[1]?.toLowerCase();
+    return Boolean(section && prefixes.some((prefix) => section === prefix || section.startsWith(`${prefix}.`)));
+  });
+}
+
+function documentedCommand(content: string, commands: RegExp): boolean {
+  return content.split(/\r?\n/).some((line) => {
+    const candidate = line.trim().replace(/^[$>]\s*/, "");
+    return commands.test(candidate);
+  });
+}
+
+function looksLikePackageRequirement(value: string, packageName: string): boolean {
+  return new RegExp(
+    `^${packageName}(?:\\[[^\\]]+])?(?:\\s*(?:===|==|~=|!=|<=|>=|<|>|@)[^;]+)?(?:\\s*;.+)?$`,
+    "i"
+  ).test(value.trim());
+}
+
+function requirementDeclared(content: string, packageName: string): boolean {
+  return content.split(/\r?\n/).some((line) => {
+    const candidate = line.replace(/\s+#.*$/, "").trim();
+    return Boolean(candidate && !candidate.startsWith("#") && looksLikePackageRequirement(candidate, packageName));
+  });
+}
+
+function pyprojectDependencyDeclared(content: string, packageName: string): boolean {
+  let section = "";
+  const keyedPackage = new RegExp(`^\\s*${packageName}(?:\\[[^\\]]+])?\\s*=`, "i");
+
+  for (const line of content.split(/\r?\n/)) {
+    const sectionMatch = line.match(/^\s*\[([^\]]+)]\s*(?:#.*)?$/);
+    if (sectionMatch?.[1]) {
+      section = sectionMatch[1].toLowerCase();
+      continue;
+    }
+    const candidate = line.replace(/\s+#.*$/, "");
+    if (section === "project" || section.startsWith("project.optional-dependencies")) {
+      const quotedValues = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'/g)]
+        .map((match) => match[1] ?? match[2] ?? "");
+      if (quotedValues.some((value) => looksLikePackageRequirement(value, packageName))) return true;
+    }
+    if (section.startsWith("tool.poetry") && section.endsWith("dependencies") && keyedPackage.test(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function makeTargets(facts: RepositoryFacts): Set<string> {
+  const makefile = ["Makefile", "makefile", "GNUmakefile"].find((file) => facts.files.includes(file));
+  if (!makefile) return new Set();
+  const content = readRootFile(facts, makefile);
+  return new Set(
+    content
+      .split(/\r?\n/)
+      .map((line) => line.match(/^([A-Za-z0-9_.-]+)\s*:(?![=])/))
+      .map((match) => match?.[1]?.toLowerCase())
+      .filter((target): target is string => Boolean(target))
+  );
+}
+
+function toxCommandBlock(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const commands: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    if (/^\s*commands\s*=/.test(line)) {
+      collecting = true;
+      commands.push(line.replace(/^\s*commands\s*=\s*/, ""));
+      continue;
+    }
+    if (collecting && /^\s+\S/.test(line) && !/^\s*[A-Za-z0-9_.-]+\s*=/.test(line)) {
+      commands.push(line.trim());
+      continue;
+    }
+    collecting = false;
+  }
+  return commands.join("\n");
+}
+
+// Detect a runnable or convention-backed Python test command without executing
+// the target repository. Returns a short human-readable label or undefined.
 function pythonTestCommand(facts: RepositoryFacts): string | undefined {
-  const configFiles = ["pyproject.toml", "pytest.ini", "tox.ini", "setup.cfg"];
-  for (const file of configFiles) {
-    if (!facts.files.includes(file)) continue;
-    const content = readFileIfExists(facts.root, file);
-    if (/pytest|\[tool\.pytest|\[pytest\]/i.test(content)) return `python -m pytest (${file})`;
-  }
-  if (facts.files.includes("Makefile")) {
-    const content = readFileIfExists(facts.root, "Makefile");
-    if (/^test\s*:/m.test(content)) return "make test";
-  }
-  if (facts.files.includes("requirements.txt")) {
-    const content = readFileIfExists(facts.root, "requirements.txt");
-    if (/pytest/i.test(content)) return "pytest (requirements.txt)";
-  }
+  if (makeTargets(facts).has("test")) return "make test";
+
+  const readmeCommand = /^(?:(?:python(?:\d+(?:\.\d+)?)?|\{envpython})\s+-m\s+)?(?:pytest|unittest)\b/i;
+  if (documentedCommand(facts.readme, readmeCommand)) return "documented Python test command (README)";
+
+  const pyproject = readRootFile(facts, "pyproject.toml");
+  if (hasIniSection(pyproject, ["tool.pytest.ini_options"])) return "python -m pytest (pyproject.toml)";
+  if (pyprojectDependencyDeclared(pyproject, "pytest")) return "pytest dependency (pyproject.toml)";
+
+  const pytestIni = readRootFile(facts, "pytest.ini");
+  if (hasIniSection(pytestIni, ["pytest"])) return "python -m pytest (pytest.ini)";
+
+  const setupCfg = readRootFile(facts, "setup.cfg");
+  if (hasIniSection(setupCfg, ["tool:pytest", "pytest"])) return "python -m pytest (setup.cfg)";
+
+  const toxCommands = toxCommandBlock(readRootFile(facts, "tox.ini"));
+  if (documentedCommand(toxCommands, readmeCommand)) return "Python test command (tox.ini)";
+
+  const requirements = readRootFile(facts, "requirements.txt");
+  if (requirementDeclared(requirements, "pytest")) return "pytest dependency (requirements.txt)";
   return undefined;
 }
 
-// Detect quality commands (lint/typecheck/check/build) from Python-ecosystem
-// sources, in addition to package.json#scripts.
-function pythonQualityCommands(facts: RepositoryFacts): string[] {
-  const commands: string[] = [];
-  const configFiles = ["pyproject.toml", "tox.ini", "setup.cfg"];
-  for (const file of configFiles) {
-    if (!facts.files.includes(file)) continue;
-    const content = readFileIfExists(facts.root, file);
-    if (/\[tool\.ruff\]|\[tool\.mypy\]|\[tool\.black\]|\[tool\.flake8\]|ruff|mypy|flake8/i.test(content)) {
-      commands.push(`lint (${file})`);
-      break;
+function addConfiguredPythonTools(commands: Set<string>, content: string, source: string): void {
+  const tools: Array<[string[], string, boolean]> = [
+    [["tool.ruff"], "ruff check", true],
+    [["tool.mypy", "mypy"], "mypy", true],
+    [["tool.black", "black"], "black --check", false],
+    [["tool.pyright", "pyright"], "pyright", false],
+    [["tool.pylint", "pylint"], "pylint", true],
+    [["flake8", "tool.flake8"], "flake8", false]
+  ];
+  for (const [sections, command, allowSubsections] of tools) {
+    if ((allowSubsections ? hasIniSectionPrefix(content, sections) : hasIniSection(content, sections))) {
+      commands.add(`${command} (${source})`);
     }
   }
-  if (facts.files.includes("Makefile")) {
-    const content = readFileIfExists(facts.root, "Makefile");
-    if (/^lint\s*:/m.test(content)) commands.push("make lint");
-    if (/^check\s*:/m.test(content)) commands.push("make check");
-    if (/^build\s*:/m.test(content)) commands.push("make build");
+}
+
+function addDocumentedPythonQualityCommands(commands: Set<string>, content: string, source: string): void {
+  const tools: Array<[RegExp, string]> = [
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?ruff\s+check\b/i, "ruff check"],
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?mypy\b/i, "mypy"],
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?black\s+--check\b/i, "black --check"],
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?flake8\b/i, "flake8"],
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?pyright\b/i, "pyright"],
+    [/^(?:python(?:\d+(?:\.\d+)?)?\s+-m\s+)?pylint\b/i, "pylint"]
+  ];
+  for (const [pattern, command] of tools) {
+    if (documentedCommand(content, pattern)) commands.add(`${command} (${source})`);
   }
-  if (facts.files.includes(".pre-commit-config.yaml")) commands.push("pre-commit");
-  return commands;
+}
+
+// Infer common Python quality commands from explicit configuration, documented
+// commands, and Make targets. The labels are deduplicated before scoring.
+function pythonQualityCommands(facts: RepositoryFacts): string[] {
+  const commands = new Set<string>();
+  addConfiguredPythonTools(commands, readRootFile(facts, "pyproject.toml"), "pyproject.toml");
+  addConfiguredPythonTools(commands, readRootFile(facts, "setup.cfg"), "setup.cfg");
+
+  addDocumentedPythonQualityCommands(commands, facts.readme, "README");
+  addDocumentedPythonQualityCommands(commands, toxCommandBlock(readRootFile(facts, "tox.ini")), "tox.ini");
+
+  const targets = makeTargets(facts);
+  for (const target of ["lint", "typecheck", "check", "build"]) {
+    if (targets.has(target)) commands.add(`make ${target}`);
+  }
+  if (facts.files.includes(".pre-commit-config.yaml")) commands.add("pre-commit run --all-files");
+  return [...commands];
 }
 
 function readsEnvironment(facts: RepositoryFacts): boolean {
@@ -251,7 +378,7 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
   ));
 
   const testScript = scripts.test;
-  const usefulTestScript = Boolean(testScript && !/no test|echo/i.test(testScript));
+  const usefulTestScript = Boolean(testScript?.trim() && !/no tests?(?: specified| configured)?/i.test(testScript));
   const pythonTest = pythonTestCommand(facts);
   const hasTestCommand = usefulTestScript || Boolean(pythonTest);
   const testFiles = hasTestFiles(facts.files);
@@ -274,7 +401,10 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
     hasTestCommand && testFiles ? undefined : "Add a runnable test command and at least one meaningful test."
   ));
 
-  const qualityScripts = ["lint", "typecheck", "check", "build"].filter((name) => typeof scripts[name] === "string");
+  const qualityScripts = ["lint", "typecheck", "check", "build"].filter((name) => {
+    const script = scripts[name];
+    return Boolean(script?.trim() && !/^echo(?:\s|$)/i.test(script.trim()));
+  });
   const pythonQuality = pythonQualityCommands(facts);
   const qualityCount = qualityScripts.length + pythonQuality.length;
   const qualityEvidence = [...qualityScripts.map((name) => `package.json#scripts.${name}`), ...pythonQuality];
