@@ -55,3 +55,19 @@ test("handles a plain directory and explains missing proof", () => {
   assert.ok(report.score < 50);
   assert.equal(report.checks.find((check) => check.id === "git-repository")?.status, "fail");
 });
+
+test("detects Python test and quality commands from pyproject.toml and Makefile", () => {
+  const root = mkdtempSync(join(tmpdir(), "proofrepo-python-"));
+  mkdirSync(join(root, "tests"));
+  writeFileSync(join(root, "README.md"), "# Python project\n\nA documented Python tool with setup, validation, status, and limitations.\n");
+  writeFileSync(join(root, "pyproject.toml"), "[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n\n[tool.ruff]\nline-length = 100\n");
+  writeFileSync(join(root, "Makefile"), "test:\n\tpython -m pytest\n\nlint:\n\truff check\n\ncheck:\n\tmake lint && make test\n");
+  writeFileSync(join(root, "tests", "test_math.py"), "def test_add():\n    assert 1 + 1 == 2\n");
+  const report = scanRepository(root);
+  const tests = report.checks.find((check) => check.id === "tests");
+  const quality = report.checks.find((check) => check.id === "quality-commands");
+  assert.equal(tests?.status, "pass");
+  assert.match(tests?.evidence.join(" ") ?? "", /pytest/);
+  assert.equal(quality?.status, "pass");
+  assert.ok((quality?.evidence.length ?? 0) >= 2);
+});

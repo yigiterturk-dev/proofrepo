@@ -111,6 +111,57 @@ function hasTestFiles(files: string[]): boolean {
   return files.some((file) => /(^|\/)(test|tests|__tests__)(\/|$)|\.(test|spec)\.[^.]+$/i.test(file));
 }
 
+function readFileIfExists(root: string, file: string): string {
+  try {
+    return readFileSync(join(root, file), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+// Detect a runnable test command from Python-ecosystem sources, in addition to
+// package.json#scripts. Returns a short human-readable label or undefined.
+function pythonTestCommand(facts: RepositoryFacts): string | undefined {
+  const configFiles = ["pyproject.toml", "pytest.ini", "tox.ini", "setup.cfg"];
+  for (const file of configFiles) {
+    if (!facts.files.includes(file)) continue;
+    const content = readFileIfExists(facts.root, file);
+    if (/pytest|\[tool\.pytest|\[pytest\]/i.test(content)) return `python -m pytest (${file})`;
+  }
+  if (facts.files.includes("Makefile")) {
+    const content = readFileIfExists(facts.root, "Makefile");
+    if (/^test\s*:/m.test(content)) return "make test";
+  }
+  if (facts.files.includes("requirements.txt")) {
+    const content = readFileIfExists(facts.root, "requirements.txt");
+    if (/pytest/i.test(content)) return "pytest (requirements.txt)";
+  }
+  return undefined;
+}
+
+// Detect quality commands (lint/typecheck/check/build) from Python-ecosystem
+// sources, in addition to package.json#scripts.
+function pythonQualityCommands(facts: RepositoryFacts): string[] {
+  const commands: string[] = [];
+  const configFiles = ["pyproject.toml", "tox.ini", "setup.cfg"];
+  for (const file of configFiles) {
+    if (!facts.files.includes(file)) continue;
+    const content = readFileIfExists(facts.root, file);
+    if (/\[tool\.ruff\]|\[tool\.mypy\]|\[tool\.black\]|\[tool\.flake8\]|ruff|mypy|flake8/i.test(content)) {
+      commands.push(`lint (${file})`);
+      break;
+    }
+  }
+  if (facts.files.includes("Makefile")) {
+    const content = readFileIfExists(facts.root, "Makefile");
+    if (/^lint\s*:/m.test(content)) commands.push("make lint");
+    if (/^check\s*:/m.test(content)) commands.push("make check");
+    if (/^build\s*:/m.test(content)) commands.push("make build");
+  }
+  if (facts.files.includes(".pre-commit-config.yaml")) commands.push("pre-commit");
+  return commands;
+}
+
 function readsEnvironment(facts: RepositoryFacts): boolean {
   const candidates = facts.files.filter((file) =>
     TEXT_EXTENSIONS.has(extension(file)) &&
@@ -201,31 +252,40 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
 
   const testScript = scripts.test;
   const usefulTestScript = Boolean(testScript && !/no test|echo/i.test(testScript));
+  const pythonTest = pythonTestCommand(facts);
+  const hasTestCommand = usefulTestScript || Boolean(pythonTest);
   const testFiles = hasTestFiles(facts.files);
-  const testEvidence = [usefulTestScript ? "package.json#scripts.test" : "", testFiles ? "test files detected" : ""].filter(Boolean);
+  const testEvidence = [
+    usefulTestScript ? "package.json#scripts.test" : "",
+    pythonTest ?? "",
+    testFiles ? "test files detected" : ""
+  ].filter(Boolean);
   checks.push(result(
     "tests",
     "Automated tests",
-    usefulTestScript && testFiles ? "pass" : usefulTestScript || testFiles ? "warn" : "fail",
+    hasTestCommand && testFiles ? "pass" : hasTestCommand || testFiles ? "warn" : "fail",
     "critical",
-    usefulTestScript && testFiles
+    hasTestCommand && testFiles
       ? "A test command and test files are present."
-      : usefulTestScript || testFiles
+      : hasTestCommand || testFiles
         ? "Only part of the automated test evidence is present."
         : "No test command or test files were detected.",
     testEvidence,
-    usefulTestScript && testFiles ? undefined : "Add a runnable test command and at least one meaningful test."
+    hasTestCommand && testFiles ? undefined : "Add a runnable test command and at least one meaningful test."
   ));
 
   const qualityScripts = ["lint", "typecheck", "check", "build"].filter((name) => typeof scripts[name] === "string");
+  const pythonQuality = pythonQualityCommands(facts);
+  const qualityCount = qualityScripts.length + pythonQuality.length;
+  const qualityEvidence = [...qualityScripts.map((name) => `package.json#scripts.${name}`), ...pythonQuality];
   checks.push(result(
     "quality-commands",
     "Quality commands",
-    qualityScripts.length >= 2 ? "pass" : qualityScripts.length === 1 ? "warn" : "fail",
+    qualityCount >= 2 ? "pass" : qualityCount === 1 ? "warn" : "fail",
     "warning",
-    qualityScripts.length ? `Detected ${qualityScripts.length} quality command(s).` : "No common lint, typecheck, check, or build command was detected.",
-    qualityScripts.map((name) => `package.json#scripts.${name}`),
-    qualityScripts.length >= 2 ? undefined : "Document automated static checks and build validation."
+    qualityCount ? `Detected ${qualityCount} quality command(s).` : "No common lint, typecheck, check, or build command was detected.",
+    qualityEvidence,
+    qualityCount >= 2 ? undefined : "Document automated static checks and build validation."
   ));
 
   const envUsage = readsEnvironment(facts);
