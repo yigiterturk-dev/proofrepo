@@ -380,11 +380,13 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
   const testScript = scripts.test;
   const usefulTestScript = Boolean(testScript?.trim() && !/no tests?(?: specified| configured)?/i.test(testScript));
   const pythonTest = pythonTestCommand(facts);
-  const hasTestCommand = usefulTestScript || Boolean(pythonTest);
+  const vitestConfig = facts.files.some((file) => /^vitest\.config\.(ts|js|mts|mjs)$/i.test(file));
+  const hasTestCommand = usefulTestScript || Boolean(pythonTest) || vitestConfig;
   const testFiles = hasTestFiles(facts.files);
   const testEvidence = [
     usefulTestScript ? "package.json#scripts.test" : "",
     pythonTest ?? "",
+    vitestConfig ? "vitest.config (Vitest configured)" : "",
     testFiles ? "test files detected" : ""
   ].filter(Boolean);
   checks.push(result(
@@ -401,13 +403,18 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
     hasTestCommand && testFiles ? undefined : "Add a runnable test command and at least one meaningful test."
   ));
 
-  const qualityScripts = ["lint", "typecheck", "check", "build"].filter((name) => {
+  const qualityScripts = ["lint", "typecheck", "check", "build", "format"].filter((name) => {
     const script = scripts[name];
     return Boolean(script?.trim() && !/^echo(?:\s|$)/i.test(script.trim()));
   });
+  const prettierConfig = facts.files.some((file) => /^\.prettierrc(?:\.json|\.yaml|\.yml|\.js)?$/i.test(file) || file === "prettier.config.js");
   const pythonQuality = pythonQualityCommands(facts);
-  const qualityCount = qualityScripts.length + pythonQuality.length;
-  const qualityEvidence = [...qualityScripts.map((name) => `package.json#scripts.${name}`), ...pythonQuality];
+  const qualityCount = qualityScripts.length + pythonQuality.length + (prettierConfig ? 1 : 0);
+  const qualityEvidence = [
+    ...qualityScripts.map((name) => `package.json#scripts.${name}`),
+    prettierConfig ? ".prettierrc (Prettier configured)" : "",
+    ...pythonQuality
+  ].filter(Boolean);
   checks.push(result(
     "quality-commands",
     "Quality commands",

@@ -29,9 +29,16 @@ function fixture(): string {
 }
 
 test("reports strong repository evidence without making certification claims", () => {
-  const report = scanRepository(fixture());
+  const root = fixture();
+  writeFileSync(join(root, "vitest.config.ts"), "export default {}\n");
+  writeFileSync(join(root, ".prettierrc.json"), "{}\n");
+  const report = scanRepository(root);
   assert.ok(report.score >= 85);
   assert.equal(report.counts.fail, 0);
+  const tests = report.checks.find((check) => check.id === "tests");
+  const quality = report.checks.find((check) => check.id === "quality-commands");
+  assert.ok(tests?.evidence.includes("vitest.config (Vitest configured)"));
+  assert.ok(quality?.evidence.includes(".prettierrc (Prettier configured)"));
   assert.match(report.claimBoundary, /does not certify security/i);
   assert.match(toMarkdown(report), /ProofRepo evidence report/);
   assert.equal(JSON.parse(toJson(report)).tool, "proofrepo");
