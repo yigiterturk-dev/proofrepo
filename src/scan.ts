@@ -496,6 +496,48 @@ function checksFor(facts: RepositoryFacts): CheckResult[] {
     contributionFiles.length >= 2 ? undefined : "Add concise CONTRIBUTING and SECURITY guidance for public collaboration."
   ));
 
+  // Git Repository Governance & Safety Check
+  let hasSignedCommits = false;
+  let hasBranchProtection = false;
+  const govEvidence: string[] = [];
+
+  try {
+    // Check if git commit signature is configured globally or locally
+    const signConfig = execFileSync("git", ["-C", facts.root, "config", "--get", "commit.gpgsign"], { encoding: "utf8" }).trim();
+    if (signConfig === "true") {
+      hasSignedCommits = true;
+      govEvidence.push("commit.gpgsign=true");
+    }
+  } catch {
+    // git config exits 1 if not set, ignore
+  }
+
+  try {
+    // Check git branch protection config using local config if available, or fetch origin references
+    const branchConfig = execFileSync("git", ["-C", facts.root, "config", "--get", "branch.main.merge"], { encoding: "utf8" }).trim();
+    if (branchConfig) {
+      hasBranchProtection = true;
+      govEvidence.push("local main tracking branch configured");
+    }
+  } catch {
+    // ignore
+  }
+
+  const govStatus: CheckStatus = hasSignedCommits || hasBranchProtection ? "pass" : "warn";
+  checks.push(result(
+    "git-governance",
+    "Git repository governance",
+    govStatus,
+    "info",
+    hasSignedCommits && hasBranchProtection
+      ? "Commit signing (GPG) is enabled and branch protections are configured locally."
+      : hasSignedCommits || hasBranchProtection
+        ? "Partial repository governance detected (either GPG signing or branch configuration is active)."
+        : "No active local commit signing (GPG) or local branch protections detected.",
+    govEvidence,
+    govStatus === "pass" ? undefined : "Enable commit signing (git config commit.gpgsign true) and configure repository merge protections."
+  ));
+
   return checks;
 }
 

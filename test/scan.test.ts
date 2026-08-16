@@ -37,8 +37,10 @@ test("reports strong repository evidence without making certification claims", (
   assert.equal(report.counts.fail, 0);
   const tests = report.checks.find((check) => check.id === "tests");
   const quality = report.checks.find((check) => check.id === "quality-commands");
+  const governance = report.checks.find((check) => check.id === "git-governance");
   assert.ok(tests?.evidence.includes("vitest.config (Vitest configured)"));
   assert.ok(quality?.evidence.includes(".prettierrc (Prettier configured)"));
+  assert.ok(governance);
   assert.match(report.claimBoundary, /does not certify security/i);
   assert.match(toMarkdown(report), /ProofRepo evidence report/);
   assert.equal(JSON.parse(toJson(report)).tool, "proofrepo");
