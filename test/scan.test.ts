@@ -143,3 +143,14 @@ test("ignores empty or echo-only Node quality scripts", () => {
   const report = scanRepository(root);
   assert.equal(report.checks.find((check) => check.id === "quality-commands")?.status, "fail");
 });
+
+test("CLI --badge option generates an SVG badge", async () => {
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { spawnSync } = await import("node:child_process");
+  const root = fixture();
+  const run = spawnSync(process.execPath, ["dist/cli.js", root, "--badge"], { encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr);
+  const badgePath = join(root, "proofrepo-badge.svg");
+  assert.ok(existsSync(badgePath));
+  assert.match(readFileSync(badgePath, "utf8"), /<svg/);
+});
