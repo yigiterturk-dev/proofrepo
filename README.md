@@ -20,21 +20,17 @@ It does **not** certify security, production readiness, compliance, ownership, o
 Requirements: Node.js 20 or newer.
 
 ```bash
-npx proofrepo /path/to/repository
+git clone https://github.com/yigiterturk-dev/proofrepo.git
+cd proofrepo
+npm install
+npm run build
+node dist/cli.js /path/to/repository
 ```
 
 To run it against the repository you are standing in:
 
 ```bash
-npx proofrepo .
-```
-
-To work on ProofRepo itself:
-
-```bash
-npm install
-npm run check
-node dist/cli.js /path/to/repository
+node /path/to/proofrepo/dist/cli.js .
 ```
 
 ## Output formats
