@@ -20,15 +20,21 @@ It does **not** certify security, production readiness, compliance, ownership, o
 Requirements: Node.js 20 or newer.
 
 ```bash
-npm install
-npm run build
-node dist/cli.js /path/to/repository
+npx proofrepo /path/to/repository
 ```
 
-After the package is published, the intended command is:
+To run it against the repository you are standing in:
 
 ```bash
-npx proofrepo /path/to/repository
+npx proofrepo .
+```
+
+To work on ProofRepo itself:
+
+```bash
+npm install
+npm run check
+node dist/cli.js /path/to/repository
 ```
 
 ## Output formats

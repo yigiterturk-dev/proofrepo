@@ -16,7 +16,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "pretest": "npm run build",
-    "check": "npm run lint && npm run build && npm test"
+    "check": "npm run lint && npm run build && npm test",
+    "prepublishOnly": "npm run check"
   },
   "engines": {
     "node": ">=20"
@@ -32,12 +33,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/moriana55/proofrepo.git"
+    "url": "git+https://github.com/yigiterturk-dev/proofrepo.git"
   },
   "bugs": {
-    "url": "https://github.com/moriana55/proofrepo/issues"
+    "url": "https://github.com/yigiterturk-dev/proofrepo/issues"
   },
-  "homepage": "https://github.com/moriana55/proofrepo#readme",
+  "homepage": "https://github.com/yigiterturk-dev/proofrepo#readme",
   "devDependencies": {
     "@types/node": "^24.3.0",
     "tsx": "^4.20.5",
